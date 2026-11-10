@@ -69,9 +69,11 @@ services:
       # Web
       - HTTP_PORT
       - HTTPS_PORT
-      # Databases (defaults point at the two services above)
-      - DATABASE_URL
-      - CLICKHOUSE_DATABASE_URL
+      # Databases. Set explicitly: Qusto CE's built-in ClickHouse default is
+      # localhost (a dev value), so without this the app cannot reach the
+      # plausible_events_db service. Override in .env only for external databases.
+      - DATABASE_URL=${DATABASE_URL:-postgres://postgres:postgres@plausible_db:5432/plausible_db}
+      - CLICKHOUSE_DATABASE_URL=${CLICKHOUSE_DATABASE_URL:-http://plausible_events_db:8123/plausible_events_db}
       # Privacy defaults (Qusto). IP_MASK_DOMAINS="*" masks the IP used for the
       # daily visitor hash on every site (IPv4 /24, IPv6 /48).
       - IP_MASK_DOMAINS
