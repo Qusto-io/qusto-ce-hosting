@@ -83,28 +83,29 @@ jobs:
           [ -n "$site_id" ] || { echo "::error::site was not created"; exit 1; }
           echo "SITE_ID=$site_id" >> "$GITHUB_ENV"
 
-      - name: Send one pageview
+      # A new site reaches the ingestion cache on its next refresh (every 30s), and
+      # until then events for it are accepted (202) but dropped. So send a pageview
+      # every 10s until one is STORED, the way a real install would see traffic.
+      - name: A pageview is accepted and stored in ClickHouse
         run: |
           set -euo pipefail
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/event \
-            -H 'Content-Type: application/json' \
-            -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15' \
-            -H 'X-Forwarded-For: 203.0.113.7' \
-            -d "{\"name\":\"pageview\",\"url\":\"https://$SITE/smoke\",\"domain\":\"$SITE\"}")
-          echo "POST /api/event -> $code"
-          [ "$code" = "202" ] || { echo "::error::event endpoint returned $code"; exit 1; }
-
-      - name: The pageview is stored in ClickHouse
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 24); do
+          for i in $(seq 1 18); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/event \
+              -H 'Content-Type: application/json' \
+              -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15' \
+              -H "X-Forwarded-For: 203.0.113.$i" \
+              -d "{\"name\":\"pageview\",\"url\":\"https://$SITE/smoke\",\"domain\":\"$SITE\"}")
+            [ "$code" = "202" ] || { echo "::error::event endpoint returned $code"; exit 1; }
+            sleep 10
             n=$(docker compose exec -T plausible_events_db clickhouse-client --query \
               "SELECT count() FROM plausible_events_db.events_v2 WHERE site_id = $SITE_ID AND name = 'pageview'")
-            if [ "${n:-0}" -ge 1 ]; then echo "OK: $n pageview row(s) for site $SITE_ID in events_v2"; exit 0; fi
-            sleep 5
+            if [ "${n:-0}" -ge 1 ]; then
+              echo "OK: $n pageview row(s) for site $SITE_ID in events_v2 (attempt $i, $((i * 10))s)"
+              exit 0
+            fi
           done
-          echo "::error::no pageview row in ClickHouse after 120s"
-          docker compose logs --tail=200 plausible; exit 1
+          echo "::error::no pageview row in ClickHouse after 180s"
+          exit 1
 
       - name: Logs on failure
         if: failure()

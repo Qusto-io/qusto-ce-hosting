@@ -107,8 +107,9 @@ docker compose up -d
 
 [`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) runs on every change and weekly.
 It boots this compose file with the CE image, creates an account and a site inside the
-running app, sends one pageview, and passes only when that pageview is **stored in
-ClickHouse**.
+running app, sends pageviews, and passes only when one is **stored in ClickHouse**.
+(A new site reaches the ingestion cache within 30 seconds; events sent before that are
+accepted but dropped.)
 
 ## Licence
 
