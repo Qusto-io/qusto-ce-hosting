@@ -1,0 +1,4 @@
+^\.gitallowed:
+^\.env\.example:[0-9]+:SECRET_KEY_BASE=$
+^compose\.yml:[0-9]+:\s+- SECRET_KEY_BASE=\$\{SECRET_KEY_BASE\}$
+^\.github/workflows/smoke\.yml:[0-9]+:.*SECRET_KEY_BASE=\$\(openssl rand

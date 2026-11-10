@@ -1,0 +1,108 @@
+# Qusto Community Edition: self-hosted install.
+# Based on plausible/community-edition (MIT); see NOTICE.
+#
+# What this runs: the Qusto CE engine (a fork of Plausible Analytics, AGPL-3.0),
+# Postgres and ClickHouse. Traffic analytics only; Qusto's commerce services
+# (orders, revenue, Coverage, connectors) are not part of CE.
+
+services:
+  plausible_db:
+    image: postgres:16-alpine
+    restart: always
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      start_period: 1m
+
+  plausible_events_db:
+    image: clickhouse/clickhouse-server:25.11.5.8-alpine
+    restart: always
+    volumes:
+      - event-data:/var/lib/clickhouse
+      - event-logs:/var/log/clickhouse-server
+      - ./clickhouse/logs.xml:/etc/clickhouse-server/config.d/logs.xml:ro
+      # Bind IPv4 only: Docker bridge networks have no IPv6 by default.
+      - ./clickhouse/ipv4-only.xml:/etc/clickhouse-server/config.d/ipv4-only.xml:ro
+      # Smaller memory footprint for small servers.
+      # https://clickhouse.com/docs/en/operations/tips#using-less-than-16gb-of-ram
+      - ./clickhouse/low-resources.xml:/etc/clickhouse-server/config.d/low-resources.xml:ro
+      - ./clickhouse/default-profile-low-resources-overrides.xml:/etc/clickhouse-server/users.d/default-profile-low-resources-overrides.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 -O - http://127.0.0.1:8123/ping || exit 1"]
+      start_period: 1m
+
+  plausible:
+    # Pin a release. Releases: https://github.com/Qusto-io/qusto-ce/releases
+    # Verify the signature before upgrading (see README, "Verify the image").
+    image: ${QUSTO_CE_IMAGE:-ghcr.io/qusto-io/qusto-ce-community:v1.0.0}
+    restart: always
+    command: sh -c "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
+    depends_on:
+      plausible_db:
+        condition: service_healthy
+      plausible_events_db:
+        condition: service_healthy
+    volumes:
+      - plausible-data:/var/lib/plausible
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    environment:
+      - TMPDIR=/var/lib/plausible/tmp
+      # Required
+      - BASE_URL=${BASE_URL}
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
+      # Registration and 2FA
+      - TOTP_VAULT_KEY
+      - DISABLE_REGISTRATION
+      - ENABLE_EMAIL_VERIFICATION
+      # Web
+      - HTTP_PORT
+      - HTTPS_PORT
+      # Databases (defaults point at the two services above)
+      - DATABASE_URL
+      - CLICKHOUSE_DATABASE_URL
+      # Privacy defaults (Qusto). IP_MASK_DOMAINS="*" masks the IP used for the
+      # daily visitor hash on every site (IPv4 /24, IPv6 /48).
+      - IP_MASK_DOMAINS
+      - CONSENT_REQUIRED
+      - CONSENT_AGGREGATE_DOMAINS
+      # IP geolocation
+      - IP_GEOLOCATION_DB
+      - GEONAMES_SOURCE_FILE
+      - MAXMIND_LICENSE_KEY
+      - MAXMIND_EDITION
+      # Google integrations
+      - GOOGLE_CLIENT_ID
+      - GOOGLE_CLIENT_SECRET
+      # Email
+      - MAILER_ADAPTER
+      - MAILER_EMAIL
+      - MAILER_NAME
+      - SMTP_HOST_ADDR
+      - SMTP_HOST_PORT
+      - SMTP_USER_NAME
+      - SMTP_USER_PWD
+      - SMTP_HOST_SSL_ENABLED
+      - POSTMARK_API_KEY
+      - MAILGUN_API_KEY
+      - MAILGUN_DOMAIN
+      - MAILGUN_BASE_URI
+      - MANDRILL_API_KEY
+      - SENDGRID_API_KEY
+
+volumes:
+  db-data:
+  event-data:
+  event-logs:
+  plausible-data:

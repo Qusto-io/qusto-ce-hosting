@@ -1,0 +1,10 @@
+This repository is based on plausible/community-edition
+(https://github.com/plausible/community-edition), Copyright (c) 2024 Plausible
+Analytics, MIT License. compose.yml and the files in clickhouse/ are derived
+from it.
+
+The software it installs, Qusto Community Edition
+(https://github.com/Qusto-io/qusto-ce), is a fork of Plausible Analytics,
+Copyright (c) 2018-present Plausible Insights OÜ, licensed under the GNU AGPL
+v3. "Plausible" is a trademark of Plausible Insights OÜ; this project is not
+affiliated with or endorsed by Plausible Insights OÜ.

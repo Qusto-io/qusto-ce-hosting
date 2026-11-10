@@ -1,0 +1,7 @@
+# Copy to compose.override.yml to publish the app on a local port, for use
+# behind your own reverse proxy (see reverse-proxy/). Compose loads
+# compose.override.yml automatically.
+services:
+  plausible:
+    ports:
+      - 127.0.0.1:8000:8000

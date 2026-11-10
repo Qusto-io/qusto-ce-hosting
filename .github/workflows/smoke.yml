@@ -1,0 +1,111 @@
+name: Compose smoke test
+
+# Boots compose.yml with the Qusto CE image and passes only when a pageview is
+# STORED in ClickHouse (persisted evidence, not a health check).
+# Before v1.0.0 is published the image is built from Qusto-io/qusto-ce source.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
+  workflow_dispatch:
+    inputs:
+      ce_ref:
+        description: "qusto-ce ref to build when no published image is used"
+        default: main
+
+permissions:
+  contents: read
+
+env:
+  PUBLISHED_IMAGE: ghcr.io/qusto-io/qusto-ce-community:v1.0.0
+  SITE: smoke.example.test
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Use the published image, or build CE from source
+        run: |
+          set -euo pipefail
+          if docker manifest inspect "$PUBLISHED_IMAGE" >/dev/null 2>&1; then
+            echo "QUSTO_CE_IMAGE=$PUBLISHED_IMAGE" >> "$GITHUB_ENV"
+            echo "Using published $PUBLISHED_IMAGE"
+          else
+            ref="${{ github.event.inputs.ce_ref || 'main' }}"
+            echo "No published image yet; building Qusto-io/qusto-ce@$ref (MIX_ENV=ce)"
+            git clone --depth 1 --branch "$ref" https://github.com/Qusto-io/qusto-ce ce-src
+            docker build -t qusto-ce:smoke ce-src
+            echo "QUSTO_CE_IMAGE=qusto-ce:smoke" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          sed -i "s|^BASE_URL=.*|BASE_URL=http://localhost:8000|" .env
+          sed -i "s|^SECRET_KEY_BASE=.*|SECRET_KEY_BASE=$(openssl rand -base64 48 | tr -d '\n')|" .env
+          sed -i "s|^TOTP_VAULT_KEY=.*|TOTP_VAULT_KEY=$(openssl rand -base64 32)|" .env
+          sed -i "s|^DISABLE_REGISTRATION=.*|DISABLE_REGISTRATION=false|" .env
+          echo "QUSTO_CE_IMAGE=$QUSTO_CE_IMAGE" >> .env
+          cp compose.override.example.yml compose.override.yml
+
+      - name: Boot
+        run: |
+          set -euo pipefail
+          docker compose up -d
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+              echo "healthy after $((i * 5))s"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::CE did not become healthy"; docker compose logs --tail=200 plausible; exit 1
+
+      - name: Create an account and a site inside the running app
+        run: |
+          set -euo pipefail
+          out=$(docker compose exec -T plausible /app/bin/plausible rpc '
+            pw = "Smoke-" <> Base.encode16(:crypto.strong_rand_bytes(12))
+            {:ok, user} =
+              Plausible.Auth.User.new(%{name: "Smoke", email: "smoke@example.test", password: pw, password_confirmation: pw})
+              |> Plausible.Repo.insert()
+            {:ok, %{site: site}} = Plausible.Sites.create(user, %{"domain" => "'"$SITE"'", "timezone" => "Etc/UTC"})
+            IO.puts("SITE_ID=#{site.id}")
+          ')
+          echo "$out"
+          site_id=$(echo "$out" | sed -n 's/^SITE_ID=//p' | tail -1)
+          [ -n "$site_id" ] || { echo "::error::site was not created"; exit 1; }
+          echo "SITE_ID=$site_id" >> "$GITHUB_ENV"
+
+      - name: Send one pageview
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/event \
+            -H 'Content-Type: application/json' \
+            -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15' \
+            -H 'X-Forwarded-For: 203.0.113.7' \
+            -d "{\"name\":\"pageview\",\"url\":\"https://$SITE/smoke\",\"domain\":\"$SITE\"}")
+          echo "POST /api/event -> $code"
+          [ "$code" = "202" ] || { echo "::error::event endpoint returned $code"; exit 1; }
+
+      - name: The pageview is stored in ClickHouse
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            n=$(docker compose exec -T plausible_events_db clickhouse-client --query \
+              "SELECT count() FROM plausible_events_db.events_v2 WHERE site_id = $SITE_ID AND name = 'pageview'")
+            if [ "${n:-0}" -ge 1 ]; then echo "OK: $n pageview row(s) for site $SITE_ID in events_v2"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::no pageview row in ClickHouse after 120s"
+          docker compose logs --tail=200 plausible; exit 1
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=300
