@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    # The Qusto CE image is pinned deliberately (and signature-verified) in the
+    # README; Dependabot only proposes the Postgres and ClickHouse base images.
+    ignore:
+      - dependency-name: "ghcr.io/qusto-io/qusto-ce-community"
