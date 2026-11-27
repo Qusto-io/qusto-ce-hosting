@@ -5,9 +5,10 @@ Run **Qusto Community Edition** on your own server with Docker Compose.
 Qusto CE is a fork of [Plausible Analytics](https://github.com/plausible/analytics)
 under the GNU AGPL v3. Source: [Qusto-io/qusto-ce](https://github.com/Qusto-io/qusto-ce).
 
-> **Status: pre-release.** The first public image, `ghcr.io/qusto-io/qusto-ce-community:v1.0.0`,
-> is published once its release commit has run in Qusto's own production for 7 days.
-> Until then, [build the image from source](#before-v100-build-from-source).
+> **Status:** the first public image is `ghcr.io/qusto-io/qusto-ce-community:v1.0.1`
+> (signed, see [Verify the image](#verify-the-image)). This repository pins that tag by default.
+> Newer versions are listed in the [release notes](https://github.com/Qusto-io/qusto-ce/releases).
+> You can also [build the image from source](#build-from-source).
 
 ## What you get, and what you don't
 
@@ -71,7 +72,7 @@ docker compose up -d   # database migrations run on start
 Releases are signed with keyless cosign from Qusto's GitHub Actions:
 
 ```sh
-cosign verify ghcr.io/qusto-io/qusto-ce-community:v1.0.0 \
+cosign verify ghcr.io/qusto-io/qusto-ce-community:v1.0.1 \
   --certificate-identity-regexp 'https://github.com/Qusto-io/qusto-ce/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -94,7 +95,7 @@ docker compose up -d
 To restore, stop the stack, extract each archive into its (empty) volume the same way
 (`tar xzf`), and start again. Keep `.env`: `SECRET_KEY_BASE` must match the backup.
 
-## Before v1.0.0: build from source
+## Build from source
 
 ```sh
 git clone https://github.com/Qusto-io/qusto-ce

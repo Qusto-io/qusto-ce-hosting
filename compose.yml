@@ -43,7 +43,7 @@ services:
   plausible:
     # Pin a release. Releases: https://github.com/Qusto-io/qusto-ce/releases
     # Verify the signature before upgrading (see README, "Verify the image").
-    image: ${QUSTO_CE_IMAGE:-ghcr.io/qusto-io/qusto-ce-community:v1.0.0}
+    image: ${QUSTO_CE_IMAGE:-ghcr.io/qusto-io/qusto-ce-community:v1.0.1}
     restart: always
     command: sh -c "/entrypoint.sh db createdb && /entrypoint.sh db migrate && /entrypoint.sh run"
     depends_on:
