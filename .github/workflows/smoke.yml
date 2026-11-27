@@ -2,7 +2,7 @@ name: Compose smoke test
 
 # Boots compose.yml with the Qusto CE image and passes only when a pageview is
 # STORED in ClickHouse (persisted evidence, not a health check).
-# Before v1.0.0 is published the image is built from Qusto-io/qusto-ce source.
+# If the published image cannot be pulled the image is built from Qusto-io/qusto-ce source.
 
 on:
   push:
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  PUBLISHED_IMAGE: ghcr.io/qusto-io/qusto-ce-community:v1.0.0
+  PUBLISHED_IMAGE: ghcr.io/qusto-io/qusto-ce-community:v1.0.1
   SITE: smoke.example.test
 
 jobs:
